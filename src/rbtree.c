@@ -183,7 +183,7 @@ node_t *_find_node(node_t *node, const key_t key) {
 
 	node_t *ret_node;
 	ret_node = _find_node(node->left, key);
-	if (!ret_node)
+	if (ret_node)
 		return ret_node;
 	else
 		return _find_node(node->right, key);
@@ -214,13 +214,16 @@ node_t *rbtree_max(const rbtree *t) {
 	return cur_node;
 }
 
-color_t _erase_node(node_t **cur_node, bool cur_is_left) {
-	node_t *left_node = (*cur_node)->left;
-	node_t *right_node = (*cur_node)->right;
-	node_t *parent_node = (*cur_node)->parent;
+color_t _erase_node(node_t **_cur_node, node_t **_parent_node,
+					bool *_cur_is_left) {
+	node_t *cur_node = *_cur_node;
+	node_t *parent_node = cur_node->parent;
+	node_t *left_node = cur_node->left;
+	node_t *right_node = cur_node->right;
+	bool cur_is_left = parent_node && parent_node->left == cur_node;
 	color_t ret;
 	if (!left_node) {
-		ret = get_color(*cur_node);
+		ret = get_color(cur_node);
 		if (parent_node) {
 			if (cur_is_left) {
 				parent_node->left = right_node;
@@ -231,12 +234,10 @@ color_t _erase_node(node_t **cur_node, bool cur_is_left) {
 		if (right_node) {
 			right_node->parent = parent_node;
 		}
-		free(*cur_node);
-		*cur_node = right_node;
-		return ret;
-	}
-	if (!right_node) {
-		ret = get_color(*cur_node);
+		free(cur_node);
+		cur_node = right_node;
+	} else if (!right_node) {
+		ret = get_color(cur_node);
 		if (parent_node) {
 			if (cur_is_left) {
 				parent_node->left = left_node;
@@ -245,44 +246,57 @@ color_t _erase_node(node_t **cur_node, bool cur_is_left) {
 			}
 		}
 		left_node->parent = parent_node;
-		free(*cur_node);
-		*cur_node = left_node;
-		return ret;
-	}
-
-	// find predecessor
-	node_t *pred_node = (*cur_node)->right;
-	while (pred_node->left) {
-		pred_node = pred_node->left;
-	}
-	ret = get_color(pred_node);
-	(*cur_node)->key = pred_node->key;
-
-	// delete predecessor.
-	// use left of predeccor is NULL
-	right_node = pred_node->right;
-	parent_node = pred_node->parent;
-	if (parent_node == *cur_node) {
-		parent_node->right = right_node;
+		free(cur_node);
+		cur_node = left_node;
 	} else {
-		parent_node->left = right_node;
-	}
+		// find predecessor
+		node_t *pred_node = cur_node->right;
+		while (pred_node->left) {
+			pred_node = pred_node->left;
+		}
+		ret = get_color(pred_node);
+		cur_node->key = pred_node->key;
 
-	if (right_node) {
-		right_node->parent = parent_node;
-	}
+		// delete predecessor.
+		// use left of predeccor is NULL
+		right_node = pred_node->right;
+		parent_node = pred_node->parent;
+		if (parent_node == cur_node) {
+			parent_node->right = right_node;
+			cur_is_left = false;
+		} else {
+			parent_node->left = right_node;
+			cur_is_left = true;
+		}
 
-	free(pred_node);
+		if (right_node) {
+			right_node->parent = parent_node;
+		}
+		free(pred_node);
+		cur_node = right_node;
+	}
+	*_cur_node = cur_node;
+	*_parent_node = parent_node;
+	*_cur_is_left = cur_is_left;
+
 	return ret;
 }
 
 int rbtree_erase(rbtree *t, node_t *p) {
 	// TODO: implement erase
-	node_t *parent_node = p->parent;
-	bool cur_is_left = (parent_node && parent_node->left == p);
-	color_t deleted_color = _erase_node(&p, cur_is_left);
-	if (deleted_color == RBTREE_RED)
+	node_t *parent_node;
+	bool cur_is_left;
+	color_t deleted_color = _erase_node(&p, &parent_node, &cur_is_left);
+	if (!parent_node) {
+		t->root = p;
+		if (p) {
+			p->color = RBTREE_BLACK;
+		}
+		deleted_color = RBTREE_RED;
+	}
+	if (deleted_color == RBTREE_RED) {
 		return 0;
+	}
 
 	node_t *cur_node = p;
 	node_t *sibling_node;
@@ -294,42 +308,89 @@ int rbtree_erase(rbtree *t, node_t *p) {
 		}
 	}
 	// Loop while there is no parent or parent is red
-	// while (parent_node && get_color(cur_node) == RBTREE_BLACK) {
-	// 	// case 1 sibling is red
-	// 	if (get_color(sibling_node) == RBTREE_RED) {
-	// 		sibling_node->color = RBTREE_BLACK;
-	// 		parent_node->color = RBTREE_RED;
-	// 		if (cur_is_left) {
-	// 			left_rotate(parent_node);
-	// 		} else {
-	// 			right_rotate(parent_node);
-	// 		}
-	// 	}
-	// 	// sibling is black
-	// 	else {
-	// 		// case 2 childs of sibling are black
-	// 		if (get_color(sibling_node->left) == RBTREE_BLACK &&
-	// 			get_color(sibling_node->right) == RBTREE_BLACK) {
-	// 		} else {
-	// 			// case 3
-	// 			if ((sibling_is_left &&
-	// 				 get_color(sibling_node->right) == RBTREE_RED) ||
-	// 				(!sibling_is_left &&
-	// 				 get_color(sibling_node->left) == RBTREE_RED)) {
-	// 			}
-	// 		}
-	// 	}
-	// 	parent_node = cur_node->parent;
-	// 	cur_is_left = (parent_node && parent_node->left == cur_node);
-	// 	if (parent_node) {
-	// 		if (cur_is_left) {
-	// 			sibling_node = parent_node->right;
-	// 		} else {
-	// 			sibling_node = parent_node->left;
-	// 		}
-	// 	}
-	// }
-	cur_node->color = RBTREE_BLACK;
+	while (parent_node && get_color(cur_node) == RBTREE_BLACK) {
+		// case 1 sibling is red
+		if (get_color(sibling_node) == RBTREE_RED) {
+			sibling_node->color = RBTREE_BLACK;
+			parent_node->color = RBTREE_RED;
+			if (cur_is_left) {
+				left_rotate(parent_node);
+			} else {
+				right_rotate(parent_node);
+			}
+			if (!sibling_node->parent) {
+				t->root = sibling_node;
+			}
+
+			if (cur_is_left) {
+				sibling_node = parent_node->right;
+			} else {
+				sibling_node = parent_node->left;
+			}
+		}
+		// sibling is black
+		// case 2 childs of sibling are black
+		if (get_color(sibling_node->left) == RBTREE_BLACK &&
+			get_color(sibling_node->right) == RBTREE_BLACK) {
+			sibling_node->color = RBTREE_RED;
+			cur_node = parent_node;
+		} else {
+			// case 3, 4
+			bool case3_1 =
+				(cur_is_left && get_color(sibling_node->left) == RBTREE_RED);
+			bool case3_2 =
+				(!cur_is_left && get_color(sibling_node->right) == RBTREE_RED);
+			// case 3
+			if (case3_1 || case3_2) {
+				sibling_node->color = RBTREE_RED;
+				if (case3_1) {
+					sibling_node->left->color = RBTREE_BLACK;
+					right_rotate(sibling_node);
+					sibling_node = parent_node->right;
+
+				} else {
+					sibling_node->right->color = RBTREE_BLACK;
+					left_rotate(sibling_node);
+					sibling_node = parent_node->left;
+				}
+			}
+			// case 4
+			color_t temp_color = parent_node->color;
+			parent_node->color = RBTREE_BLACK;
+			sibling_node->color = temp_color;
+
+			if (cur_is_left) {
+				left_rotate(parent_node);
+			} else {
+				right_rotate(parent_node);
+			}
+
+			if (!parent_node->parent->parent) {
+				t->root = parent_node->parent;
+			}
+
+			node_t *grand_node = parent_node->parent;
+			if (grand_node->left == parent_node) {
+				cur_node = grand_node->right;
+			} else {
+				cur_node = grand_node->left;
+			}
+		}
+		parent_node = cur_node->parent;
+		cur_is_left = parent_node && parent_node->left == cur_node;
+		if (parent_node) {
+			if (cur_is_left) {
+				sibling_node = parent_node->right;
+			} else {
+				sibling_node = parent_node->left;
+			}
+		}
+	}
+	if (cur_node) {
+		cur_node->color = RBTREE_BLACK;
+	}
+	if (t->root)
+		t->root->color = RBTREE_BLACK;
 	return 0;
 }
 
