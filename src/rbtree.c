@@ -10,6 +10,11 @@ color_t get_color(node_t *node) {
 }
 
 // do left rotate based on cur_node
+// 	parent				parent
+// 	    cur					right
+// 		    right  =>	cur
+// 		rleft				rleft
+
 node_t *left_rotate(node_t *cur_node) {
 	node_t *parent_node = cur_node->parent;
 	node_t *right_node = cur_node->right;
@@ -34,6 +39,10 @@ node_t *left_rotate(node_t *cur_node) {
 }
 
 // do right rotate based on cur_node
+//	 parent			parent
+//		cur				left
+// 	left		 =>			cur
+// 		lright			rleft
 node_t *right_rotate(node_t *cur_node) {
 	node_t *parent_node = cur_node->parent;
 	node_t *left_node = cur_node->left;
@@ -60,8 +69,6 @@ node_t *right_rotate(node_t *cur_node) {
 rbtree *new_rbtree(void) {
 	rbtree *p = (rbtree *)calloc(1, sizeof(rbtree));
 	// TODO: initialize struct if needed
-	p->root = NULL;
-	p->nil = NULL;
 	return p;
 }
 
@@ -90,7 +97,7 @@ node_t *rbtree_insert(rbtree *t, const key_t key) {
 	new_node->right = NULL;
 
 	// If tree is empty, new_node is root.
-	// Else, set new node as leaf node
+	// Else, find key and set new node in Nil node
 	if (!t->root) {
 		t->root = new_node;
 		new_node->parent = NULL;
@@ -154,7 +161,6 @@ node_t *rbtree_insert(rbtree *t, const key_t key) {
 			}
 
 			// case 3 grand->parent->current is curved not curved
-
 			parent_node->color = RBTREE_BLACK;
 			grand_node->color = RBTREE_RED;
 			if (parent_is_left) {
@@ -162,6 +168,7 @@ node_t *rbtree_insert(rbtree *t, const key_t key) {
 			} else {
 				left_rotate(grand_node);
 			}
+			// update root of tree if changed
 			if (!parent_node->parent) {
 				t->root = parent_node;
 			}
@@ -175,23 +182,19 @@ node_t *rbtree_insert(rbtree *t, const key_t key) {
 	return new_node;
 }
 
-node_t *_find_node(node_t *node, const key_t key) {
-	if (!node)
-		return NULL;
-	if (node->key == key)
-		return node;
-
-	node_t *ret_node;
-	ret_node = _find_node(node->left, key);
-	if (ret_node)
-		return ret_node;
-	else
-		return _find_node(node->right, key);
-}
-
 node_t *rbtree_find(const rbtree *t, const key_t key) {
 	// TODO: implement find
-	return _find_node(t->root, key);
+	node_t *cur_node = t->root;
+	while (cur_node) {
+		if (cur_node->key == key) {
+			break;
+		} else if (cur_node->key > key) {
+			cur_node = cur_node->left;
+		} else {
+			cur_node = cur_node->right;
+		}
+	}
+	return cur_node;
 }
 
 node_t *rbtree_min(const rbtree *t) {
@@ -214,6 +217,9 @@ node_t *rbtree_max(const rbtree *t) {
 	return cur_node;
 }
 
+// Erase cur_node and assign cur_node as replaced node of freed node.
+// Return color of freed node.
+// Assign parent_node and cur_is_left based on new cur_node.
 color_t _erase_node(node_t **_cur_node, node_t **_parent_node,
 					bool *_cur_is_left) {
 	node_t *cur_node = *_cur_node;
@@ -222,6 +228,7 @@ color_t _erase_node(node_t **_cur_node, node_t **_parent_node,
 	node_t *right_node = cur_node->right;
 	bool cur_is_left = parent_node && parent_node->left == cur_node;
 	color_t ret;
+	// deleted node is origin cur_node case.
 	if (!left_node) {
 		ret = get_color(cur_node);
 		if (parent_node) {
@@ -249,7 +256,7 @@ color_t _erase_node(node_t **_cur_node, node_t **_parent_node,
 		free(cur_node);
 		cur_node = left_node;
 	} else {
-		// find predecessor
+		// deleted node is predecessor case
 		node_t *pred_node = cur_node->right;
 		while (pred_node->left) {
 			pred_node = pred_node->left;
@@ -257,7 +264,6 @@ color_t _erase_node(node_t **_cur_node, node_t **_parent_node,
 		ret = get_color(pred_node);
 		cur_node->key = pred_node->key;
 
-		// delete predecessor.
 		// use left of predeccor is NULL
 		right_node = pred_node->right;
 		parent_node = pred_node->parent;
@@ -275,6 +281,8 @@ color_t _erase_node(node_t **_cur_node, node_t **_parent_node,
 		free(pred_node);
 		cur_node = right_node;
 	}
+
+	// assign new cur_node, _parent_node and _cur_is_left to caller
 	*_cur_node = cur_node;
 	*_parent_node = parent_node;
 	*_cur_is_left = cur_is_left;
@@ -287,17 +295,21 @@ int rbtree_erase(rbtree *t, node_t *p) {
 	node_t *parent_node;
 	bool cur_is_left;
 	color_t deleted_color = _erase_node(&p, &parent_node, &cur_is_left);
+
+	// cur_node is root_node case
 	if (!parent_node) {
 		t->root = p;
 		if (p) {
 			p->color = RBTREE_BLACK;
 		}
-		deleted_color = RBTREE_RED;
+		return 0;
 	}
+	// deleted color is red case
 	if (deleted_color == RBTREE_RED) {
 		return 0;
 	}
 
+	// set variables before start loop because cur_node can be NULL
 	node_t *cur_node = p;
 	node_t *sibling_node;
 	if (parent_node) {
@@ -307,7 +319,7 @@ int rbtree_erase(rbtree *t, node_t *p) {
 			sibling_node = parent_node->left;
 		}
 	}
-	// Loop while there is no parent or parent is red
+	// Loop while there is no parent(cur is root) or parent is red
 	while (parent_node && get_color(cur_node) == RBTREE_BLACK) {
 		// case 1 sibling is red
 		if (get_color(sibling_node) == RBTREE_RED) {
@@ -318,10 +330,11 @@ int rbtree_erase(rbtree *t, node_t *p) {
 			} else {
 				right_rotate(parent_node);
 			}
+			// update root after rotation
 			if (!sibling_node->parent) {
 				t->root = sibling_node;
 			}
-
+			// update sibling after rotation
 			if (cur_is_left) {
 				sibling_node = parent_node->right;
 			} else {
@@ -346,11 +359,13 @@ int rbtree_erase(rbtree *t, node_t *p) {
 				if (case3_1) {
 					sibling_node->left->color = RBTREE_BLACK;
 					right_rotate(sibling_node);
+					// update sibling after rotation
 					sibling_node = parent_node->right;
 
 				} else {
 					sibling_node->right->color = RBTREE_BLACK;
 					left_rotate(sibling_node);
+					// update sibling after rotation
 					sibling_node = parent_node->left;
 				}
 			}
@@ -364,7 +379,7 @@ int rbtree_erase(rbtree *t, node_t *p) {
 			} else {
 				right_rotate(parent_node);
 			}
-
+			// update root after rotation
 			if (!parent_node->parent->parent) {
 				t->root = parent_node->parent;
 			}
@@ -376,6 +391,8 @@ int rbtree_erase(rbtree *t, node_t *p) {
 				cur_node = grand_node->left;
 			}
 		}
+		// set variables
+		// after first input, cur_node cannot be NULL
 		parent_node = cur_node->parent;
 		cur_is_left = parent_node && parent_node->left == cur_node;
 		if (parent_node) {
@@ -386,9 +403,9 @@ int rbtree_erase(rbtree *t, node_t *p) {
 			}
 		}
 	}
-	if (cur_node) {
-		cur_node->color = RBTREE_BLACK;
-	}
+	// set cur_node as black
+	cur_node->color = RBTREE_BLACK;
+	// set root as black
 	if (t->root)
 		t->root->color = RBTREE_BLACK;
 	return 0;
@@ -409,6 +426,7 @@ int rbtree_to_array(const rbtree *t, key_t *arr, const size_t n) {
 	if (!cur_node)
 		return 0;
 	int start_idx = 0;
+	// in order traversal with recursive function
 	_rec_set_array(arr, cur_node, &start_idx);
 	return 0;
 }
